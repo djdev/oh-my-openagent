@@ -11,6 +11,16 @@ interface TodoSnapshot {
 type TodoWriter = (input: { sessionID: string; todos: TodoSnapshot[] }) => Promise<void>
 
 const HOOK_NAME = "compaction-todo-preserver"
+const ATLAS_BOOTSTRAP_TODOS = [
+  {
+    id: "orchestrate-plan",
+    content: "Complete ALL implementation tasks",
+  },
+  {
+    id: "pass-final-wave",
+    content: "Pass Final Verification Wave - ALL reviewers APPROVE",
+  },
+] as const
 
 function extractTodos(response: unknown): TodoSnapshot[] {
   const payload = response as { data?: unknown }
@@ -21,6 +31,21 @@ function extractTodos(response: unknown): TodoSnapshot[] {
     return response as TodoSnapshot[]
   }
   return []
+}
+
+function isAtlasBootstrapTodo(todo: TodoSnapshot): boolean {
+  return ATLAS_BOOTSTRAP_TODOS.some((bootstrapTodo) =>
+    todo.id === bootstrapTodo.id || todo.content === bootstrapTodo.content
+  )
+}
+
+function shouldRestoreOverCurrentTodos(input: {
+  snapshot: TodoSnapshot[]
+  currentTodos: TodoSnapshot[]
+}): boolean {
+  if (input.currentTodos.length === 0) return true
+  if (!input.currentTodos.every(isAtlasBootstrapTodo)) return false
+  return input.snapshot.some((todo) => !isAtlasBootstrapTodo(todo))
 }
 
 async function resolveTodoWriter(): Promise<TodoWriter | null> {
@@ -81,7 +106,7 @@ export function createCompactionTodoPreserverHook(
       log(`[${HOOK_NAME}] Failed to fetch todos post-compaction`, { sessionID, error: String(err) })
     }
 
-    if (hasCurrent && currentTodos.length > 0) {
+    if (hasCurrent && !shouldRestoreOverCurrentTodos({ snapshot, currentTodos })) {
       snapshots.delete(sessionID)
       log(`[${HOOK_NAME}] Skipped restore (todos already present)`, { sessionID, count: currentTodos.length })
       return

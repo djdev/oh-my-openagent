@@ -84,4 +84,52 @@ describe("compaction-todo-preserver", () => {
     //#then
     expect(updateMock).not.toHaveBeenCalled()
   })
+
+  it("restores detailed todos when only Atlas bootstrap todos are present after compaction", async () => {
+    //#given
+    updateMock.mockClear()
+    const sessionID = "session-compaction-atlas-bootstrap"
+    const detailedTodos: Todo[] = [
+      { id: "inspect-runtime", content: "Inspect runtime compaction state", status: "completed", priority: "high" },
+      { id: "add-regression", content: "Add regression coverage for todo preservation", status: "in_progress", priority: "high" },
+      { id: "verify-pr", content: "Run focused tests and open PR", status: "pending", priority: "medium" },
+    ]
+    const atlasBootstrapTodos: Todo[] = [
+      { id: "orchestrate-plan", content: "Complete ALL implementation tasks", status: "in_progress", priority: "high" },
+      { id: "pass-final-wave", content: "Pass Final Verification Wave - ALL reviewers APPROVE", status: "pending", priority: "high" },
+    ]
+    const ctx = createMockContext([detailedTodos, atlasBootstrapTodos])
+    const hook = createCompactionTodoPreserverHook(ctx)
+
+    //#when
+    await hook.capture(sessionID)
+    await hook.event({ event: { type: "session.compacted", properties: { sessionID } } })
+
+    //#then
+    expect(updateMock).toHaveBeenCalledTimes(1)
+    expect(updateMock).toHaveBeenCalledWith({ sessionID, todos: detailedTodos })
+  })
+
+  it("skips restore when current todos include meaningful post-compaction work", async () => {
+    //#given
+    updateMock.mockClear()
+    const sessionID = "session-compaction-meaningful-current"
+    const detailedTodos: Todo[] = [
+      { id: "inspect-runtime", content: "Inspect runtime compaction state", status: "completed", priority: "high" },
+      { id: "add-regression", content: "Add regression coverage for todo preservation", status: "in_progress", priority: "high" },
+    ]
+    const currentTodos: Todo[] = [
+      { id: "orchestrate-plan", content: "Complete ALL implementation tasks", status: "in_progress", priority: "high" },
+      { id: "new-real-work", content: "Review post-compaction findings", status: "pending", priority: "medium" },
+    ]
+    const ctx = createMockContext([detailedTodos, currentTodos])
+    const hook = createCompactionTodoPreserverHook(ctx)
+
+    //#when
+    await hook.capture(sessionID)
+    await hook.event({ event: { type: "session.compacted", properties: { sessionID } } })
+
+    //#then
+    expect(updateMock).not.toHaveBeenCalled()
+  })
 })
